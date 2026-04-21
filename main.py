@@ -5,7 +5,7 @@ import yt_dlp
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# --- Config (သင်ပေးထားတဲ့ ID များ) ---
+# --- Config ---
 API_ID = 32153130
 API_HASH = "66168465c6360e3d856a8a53a3d21e84"
 BOT_TOKEN = "ဒီမှာ_သင်၏_BOT_TOKEN_ကိုထည့်ပါ" 
@@ -121,5 +121,18 @@ async def callbacks(client, query):
         except Exception as e:
             await query.message.reply(f"Error: {str(e)}")
 
-print("Bot is running...")
-app.run()
+# --- Event Loop Fix for Render ---
+async def main():
+    async with app:
+        print("Bot is running...")
+        await asyncio.Event().wait()
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    except RuntimeError:
+        # Loop ပတ်မရတဲ့အခါ Backup အနေနဲ့ သုံးဖို့
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(main())
