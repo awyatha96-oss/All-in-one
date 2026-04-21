@@ -8,7 +8,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 # --- Config ---
 API_ID = 32153130
 API_HASH = "66168465c6360e3d856a8a53a3d21e84"
-BOT_TOKEN = "ဒီမှာ_သင်၏_BOT_TOKEN_ကိုထည့်ပါ" 
+BOT_TOKEN = "8578954674:AAEJjE2hQ3fm7ylTxb0s98gauJOVTbwJ0I8" 
 
 app = Client("my_all_in_one_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
