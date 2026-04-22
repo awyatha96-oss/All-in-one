@@ -4,9 +4,12 @@ import threading
 import http.server
 import socketserver
 from telethon import TelegramClient, events, Button
+from deep_translator import GoogleTranslator
 from yt_dlp import YoutubeDL
+import edge_tts
+from youtube_transcript_api import YouTubeTranscriptApi
 
-# --- [1] RENDER PORT BINDING FIX ---
+# --- [1] RENDER PORT FIX (Web Service အတွက်) ---
 def run_dummy_server():
     port = int(os.environ.get("PORT", 8080))
     handler = http.server.SimpleHTTPRequestHandler
@@ -15,13 +18,14 @@ def run_dummy_server():
 
 threading.Thread(target=run_dummy_server, daemon=True).start()
 
-# --- [2] CONFIGURATION ---
+# --- [2] CONFIG ---
 API_ID = 32153130
 API_HASH = '66168465c6360e3d856a8a53a3d21e84'
 BOT_TOKEN = '8570099841:AAFBp8z--d3hb2V0wWa54Ir2HgXxU-A47yk'
 
+# Channels & Folder Links
 YT_LINK_1 = "https://www.youtube.com/@VibeFootyTV"
-YT_LINK_2 = "http://googleusercontent.com/youtube.com/another_yt"
+YT_LINK_2 = "youtube.com"
 FOLDER_LINK = "https://t.me/addlist/0wjAKED6UWk4MzE1"
 PUBLIC_CHANNELS = ["@ttgk776", "@ggiik77"]
 
@@ -29,28 +33,25 @@ client = TelegramClient('all_in_one_bot', API_ID, API_HASH).start(bot_token=BOT_
 
 user_lang = {}
 user_state = {}
-user_usage_count = {}
-last_msg_ids = {} # စာဟောင်းများ ပြန်ဖျက်ရန် ID သိမ်းဆည်းသည့်နေရာ
+last_msg_ids = {}
 
-# --- [3] UI MENUS ---
-def get_main_buttons(lang):
+# --- [3] KEYBOARD MENU (Reply Keyboard) ---
+def get_reply_keyboard(lang):
+    if lang == "mm":
+        return [
+            ["📥 Video Downloader"],
+            ["🗣 Text To Speech", "🔠 Translation"],
+            ["📝 YouTube Transcript", "🌐 Languages"],
+            ["📩 Contact Admin", "❓ Help"]
+        ]
     return [
-        [Button.inline("📥 Video Downloader", b"down")],
-        [Button.inline("🗣 Text To Speech", b"tts"), Button.inline("🔠 Translation", b"trans")],
-        [Button.inline("📝 YouTube Transcript", b"script"), Button.inline("🌐 Languages", b"lang")],
-        [Button.inline("📩 Contact Admin", b"contact"), Button.inline("❓ Help", b"help")]
+        ["📥 Video Downloader"],
+        ["🗣 TTS", "🔠 Translation"],
+        ["📝 YouTube Transcript", "🌐 Languages"],
+        ["📩 Contact Admin", "❓ Help"]
     ]
 
-async def is_subscribed(user_id):
-    try:
-        for ch in PUBLIC_CHANNELS:
-            p = await client.get_permissions(ch, user_id)
-            if not p: return False
-        return True
-    except:
-        return False
-
-# စာဟောင်းများ ဖျက်ပေးမည့် Helper Function
+# --- [4] HELPER FUNCTIONS ---
 async def cleanup(chat_id, user_id):
     if user_id in last_msg_ids:
         try:
@@ -58,13 +59,20 @@ async def cleanup(chat_id, user_id):
             del last_msg_ids[user_id]
         except: pass
 
-# --- [4] EVENT HANDLERS ---
+async def is_subscribed(user_id):
+    try:
+        for ch in PUBLIC_CHANNELS:
+            p = await client.get_permissions(ch, user_id)
+            if not p: return False
+        return True
+    except: return False
+
+# --- [5] MAIN HANDLERS ---
 
 @client.on(events.NewMessage(pattern='/start'))
 async def start(event):
     uid = event.sender_id
-    await cleanup(event.chat_id, uid) # အရင်ရှိနေတဲ့ စာဟောင်းဖျက်မယ်
-    
+    await cleanup(event.chat_id, uid)
     btns = [[Button.inline("🇲🇲 Myanmar", b"setup_mm")], [Button.inline("🇬🇧 English", b"setup_en")]]
     sent = await event.respond("Choose Language / ဘာသာစကား ရွေးချယ်ပါ -", buttons=btns)
     last_msg_ids[uid] = sent.id
@@ -74,95 +82,89 @@ async def setup_lang(event):
     uid = event.sender_id
     lang = event.pattern_match.group(1).decode()
     user_lang[uid] = lang
-    
-    # ဘာသာစကားရွေးပြီးရင် အရင်စာကိုဖျက်မယ်
     await cleanup(event.chat_id, uid)
-    
-    sent = await event.respond("🌟 **Main Menu** 🌟", buttons=get_main_buttons(lang))
+    sent = await event.respond("🌟 **Menu Activated!**", buttons=get_reply_keyboard(lang))
     last_msg_ids[uid] = sent.id
 
-@client.on(events.CallbackQuery(data=b"down"))
-async def down_trigger(event):
+@client.on(events.NewMessage)
+async def handle_all_input(event):
     uid = event.sender_id
-    # Feature တစ်ခုခုနှိပ်လိုက်တာနဲ့ အရင် Intro/Menu စာကိုဖျက်မယ်
-    await cleanup(event.chat_id, uid)
-    
-    # Force Sub Check
-    if user_usage_count.get(uid, 0) >= 1 and not await is_subscribed(uid):
-        btns = [
-            [Button.url("❤️ 1# YouTube", YT_LINK_1), Button.url("❤️ 3# YouTube", YT_LINK_2)],
-            [Button.url("📢 1# Subscribe", "https://t.me/ttgk776"), Button.url("📢 2# Subscribe", "https://t.me/ggiik77")],
-            [Button.url("📁 Join Folder", FOLDER_LINK)],
-            [Button.inline("✅ Done", b"check_sub")]
-        ]
-        sent = await event.respond("⚠️ **Please join all channels to continue.**", buttons=btns)
-        last_msg_ids[uid] = sent.id
-        return
+    text = event.text
+    if text.startswith('/'): return
 
-    user_state[uid] = "waiting_link"
-    sent = await event.respond("🔗 Send Video Link (YouTube/TikTok):")
-    last_msg_ids[uid] = sent.id
+    # --- Menu Button Actions ---
+    if "Video Downloader" in text:
+        await cleanup(event.chat_id, uid)
+        if not await is_subscribed(uid):
+            sub_btns = [
+                [Button.url("❤️ YouTube 1", YT_LINK_1), Button.url("❤️ YouTube 2", YT_LINK_2)],
+                [Button.url("📢 Sub 1", "https://t.me/ttgk776"), Button.url("📢 Sub 2", "https://t.me/ggiik77")],
+                [Button.url("📁 Join Folder", FOLDER_LINK)], [Button.inline("✅ Done", b"check_sub")]
+            ]
+            sent = await event.respond("⚠️ Please subscribe to continue.", buttons=sub_btns)
+            last_msg_ids[uid] = sent.id
+            return
+        user_state[uid] = "waiting_link"
+        sent = await event.respond("🔗 YouTube သို့မဟုတ် TikTok Link ပို့ပေးပါ။")
+        last_msg_ids[uid] = sent.id
+
+    elif "Transcript" in text:
+        await cleanup(event.chat_id, uid)
+        user_state[uid] = "waiting_script"
+        sent = await event.respond("📝 Transcript ထုတ်ယူလိုတဲ့ YouTube Link ပို့ပေးပါ။")
+        last_msg_ids[uid] = sent.id
+
+    elif "TTS" in text or "Text To Speech" in text:
+        await cleanup(event.chat_id, uid)
+        user_state[uid] = "waiting_tts"
+        sent = await event.respond("🗣 အသံပြောင်းလိုတဲ့ စာသားကို ပို့ပေးပါ။")
+        last_msg_ids[uid] = sent.id
+
+    elif "Translation" in text:
+        await cleanup(event.chat_id, uid)
+        user_state[uid] = "waiting_trans"
+        sent = await event.respond("🔠 ဘာသာပြန်လိုတဲ့ စာသားကို ပို့ပေးပါ။")
+        last_msg_ids[uid] = sent.id
+
+    # --- Input Processing ---
+    elif uid in user_state:
+        state = user_state[uid]
+        await cleanup(event.chat_id, uid)
+        
+        if state == "waiting_link":
+            btns = [[Button.inline("🎬 720p", f"y_{text}_720"), Button.inline("🎬 1080p", f"y_{text}_1080")],
+                    [Button.inline("🎵 Audio", f"y_{text}_audio")]]
+            sent = await event.respond("📺 Select Quality:", buttons=btns)
+            last_msg_ids[uid] = sent.id
+            
+        elif state == "waiting_script":
+            try:
+                vid_id = text.split("v=")[1].split("&")[0] if "v=" in text else text.split("/")[-1]
+                transcript = YouTubeTranscriptApi.get_transcript(vid_id)
+                full_text = " ".join([i['text'] for i in transcript])
+                await event.respond(f"📝 **Transcript Result:**\n\n{full_text[:3000]}") # စာအရှည်ကြီးမဖြစ်အောင် ဖြတ်ထားသည်
+            except: await event.respond("❌ Transcript မရနိုင်ပါ (စာတန်းမပါတဲ့ ဗီဒီယိုဖြစ်နိုင်ပါတယ်)")
+            
+        elif state == "waiting_tts":
+            path = f"tts_{uid}.mp3"
+            communicate = edge_tts.Communicate(text, "my-MM-ThihaNeural")
+            await communicate.save(path)
+            await event.client.send_file(event.chat_id, path, caption="✅ TTS Done!")
+            os.remove(path)
+
+        elif state == "waiting_trans":
+            res = GoogleTranslator(source='auto', target='my').translate(text)
+            await event.respond(f"📝 **ဘာသာပြန်ချက်:**\n\n{res}")
+            
+        user_state[uid] = None
 
 @client.on(events.CallbackQuery(data=b"check_sub"))
 async def verify(event):
     uid = event.sender_id
     if await is_subscribed(uid):
-        await cleanup(event.chat_id, uid) # Join ပြီးရင် Join ခိုင်းတဲ့စာကိုဖျက်မယ်
-        sent = await event.respond("✅ Success!", buttons=get_main_buttons(user_lang.get(uid, "en")))
-        last_msg_ids[uid] = sent.id
+        await cleanup(event.chat_id, uid)
+        await event.respond("✅ Verified!", buttons=get_reply_keyboard(user_lang.get(uid, "mm")))
     else:
-        await event.answer("❌ Please join all channels!", alert=True)
+        await event.answer("❌ အကုန် Join ရပါဦးမယ်!", alert=True)
 
-# --- [5] HIGH-SPEED DOWNLOADER ---
-async def download_video(event, url, fmt_id):
-    path = f"dl_{event.sender_id}.mp4"
-    ydl_opts = {
-        'format': f'{fmt_id}+bestaudio/best',
-        'outtmpl': path,
-        'quiet': True,
-        'merge_output_format': 'mp4',
-        'external_downloader_args': ['-x', '16', '-k', '1M'], # Speed မြန်အောင်လုပ်ထားသည်
-    }
-    progress = await event.respond("🚀 **Downloading...**")
-    try:
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, lambda: YoutubeDL(ydl_opts).download([url]))
-        await event.client.send_file(event.chat_id, path, caption="✅ Complete!")
-    except Exception as e:
-        await event.respond(f"❌ Error: {str(e)}")
-    finally:
-        await progress.delete()
-        if os.path.exists(path): os.remove(path)
-
-@client.on(events.NewMessage)
-async def handle_input(event):
-    uid = event.sender_id
-    if event.text.startswith('/') or user_state.get(uid) != "waiting_link": return
-    
-    url = event.text
-    user_usage_count[uid] = user_usage_count.get(uid, 0) + 1
-    
-    await cleanup(event.chat_id, uid) # Link ပို့လိုက်တာနဲ့ အရင်စာကိုဖျက်မယ်
-
-    if "tiktok.com" in url:
-        await download_video(event, url, "bestvideo")
-    else:
-        btns = [
-            [Button.inline("🎬 360p ( ⌛ )", f"y_{url}_360"), Button.inline("🎬 480p ( ⌛ )", f"y_{url}_480")],
-            [Button.inline("🎬 720p ( ⌛ )", f"y_{url}_720"), Button.inline("🎬 1080p", f"y_{url}_1080")],
-            [Button.inline("🎵 Audio", f"y_{url}_bestaudio")]
-        ]
-        sent = await event.respond("📺 **YouTube Quality Selection**", buttons=btns)
-        last_msg_ids[uid] = sent.id
-    user_state[uid] = None
-
-@client.on(events.CallbackQuery(pattern=r"y_(.+)_(.+)"))
-async def yt_dl(event):
-    uid = event.sender_id
-    url, q = event.pattern_match.group(1).decode(), event.pattern_match.group(2).decode()
-    await cleanup(event.chat_id, uid) # Quality ရွေးပြီးရင် Menu ကိုဖျက်မယ်
-    fmt = f"bestvideo[height<={q}]" if q != "bestaudio" else "bestaudio"
-    await download_video(event, url, fmt)
-
-print("Bot is active with Auto-Cleanup logic...")
 client.run_until_disconnected()
