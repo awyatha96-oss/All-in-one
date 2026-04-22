@@ -1,4 +1,5 @@
 telethon
-edge-tts
-deep-translator
 yt-dlp
+deep-translator
+edge-tts
+youtube-transcript-api
