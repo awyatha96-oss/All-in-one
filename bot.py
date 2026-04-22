@@ -9,21 +9,22 @@ from yt_dlp import YoutubeDL
 import edge_tts
 from youtube_transcript_api import YouTubeTranscriptApi
 
-# --- [1] RENDER PORT FIX (Web Service အတွက်) ---
+# --- [1] RENDER PORT BINDING FIX (Web Service Error ရှင်းရန်) ---
 def run_dummy_server():
-    port = int(os.environ.get("PORT", 8080))
+    # Render က ပေးတဲ့ Port ကို မဖြစ်မနေ နားထောင်ပေးရပါမယ်
+    port = int(os.environ.get("PORT", 10000)) 
     handler = http.server.SimpleHTTPRequestHandler
+    # Port ဖွင့်ပေးထားခြင်းဖြင့် "Port scan timeout" မဖြစ်တော့ပါ
     with socketserver.TCPServer(("", port), handler) as httpd:
         httpd.serve_forever()
 
 threading.Thread(target=run_dummy_server, daemon=True).start()
 
-# --- [2] CONFIG ---
+# --- [2] CONFIGURATION ---
 API_ID = 32153130
 API_HASH = '66168465c6360e3d856a8a53a3d21e84'
 BOT_TOKEN = '8570099841:AAFBp8z--d3hb2V0wWa54Ir2HgXxU-A47yk'
 
-# Channels & Folder Links
 YT_LINK_1 = "https://www.youtube.com/@VibeFootyTV"
 YT_LINK_2 = "youtube.com"
 FOLDER_LINK = "https://t.me/addlist/0wjAKED6UWk4MzE1"
@@ -35,8 +36,9 @@ user_lang = {}
 user_state = {}
 last_msg_ids = {}
 
-# --- [3] KEYBOARD MENU (Reply Keyboard) ---
+# --- [3] REPLY KEYBOARD (စာရိုက်သည့်နေရာမှ ခလုတ်များ) ---
 def get_reply_keyboard(lang):
+    # မင်းပြထားတဲ့ Icon လေးတွေနဲ့ အညီအညာစီထားပါတယ်
     if lang == "mm":
         return [
             ["📥 Video Downloader"],
@@ -83,7 +85,11 @@ async def setup_lang(event):
     lang = event.pattern_match.group(1).decode()
     user_lang[uid] = lang
     await cleanup(event.chat_id, uid)
-    sent = await event.respond("🌟 **Menu Activated!**", buttons=get_reply_keyboard(lang))
+    # Reply Keyboard Menu ကို ပို့ပေးမည်
+    sent = await event.respond(
+        "🌟 **Main Menu Activated!**\nခလုတ်များကို စာရိုက်သည့်နေရာတွင် အသုံးပြုနိုင်ပါပြီ။",
+        buttons=get_reply_keyboard(lang)
+    )
     last_msg_ids[uid] = sent.id
 
 @client.on(events.NewMessage)
@@ -92,41 +98,41 @@ async def handle_all_input(event):
     text = event.text
     if text.startswith('/'): return
 
-    # --- Menu Button Actions ---
+    # --- Menu Button Clicks ---
     if "Video Downloader" in text:
         await cleanup(event.chat_id, uid)
         if not await is_subscribed(uid):
             sub_btns = [
-                [Button.url("❤️ YouTube 1", YT_LINK_1), Button.url("❤️ YouTube 2", YT_LINK_2)],
+                [Button.url("❤️ YT 1", YT_LINK_1), Button.url("❤️ YT 2", YT_LINK_2)],
                 [Button.url("📢 Sub 1", "https://t.me/ttgk776"), Button.url("📢 Sub 2", "https://t.me/ggiik77")],
-                [Button.url("📁 Join Folder", FOLDER_LINK)], [Button.inline("✅ Done", b"check_sub")]
+                [Button.url("📁 Folder", FOLDER_LINK)], [Button.inline("✅ Done", b"check_sub")]
             ]
-            sent = await event.respond("⚠️ Please subscribe to continue.", buttons=sub_btns)
+            sent = await event.respond("⚠️ Please join our channels to continue.", buttons=sub_btns)
             last_msg_ids[uid] = sent.id
             return
         user_state[uid] = "waiting_link"
-        sent = await event.respond("🔗 YouTube သို့မဟုတ် TikTok Link ပို့ပေးပါ။")
+        sent = await event.respond("🔗 YouTube/TikTok Link ပို့ပေးပါ။")
         last_msg_ids[uid] = sent.id
 
     elif "Transcript" in text:
         await cleanup(event.chat_id, uid)
         user_state[uid] = "waiting_script"
-        sent = await event.respond("📝 Transcript ထုတ်ယူလိုတဲ့ YouTube Link ပို့ပေးပါ။")
+        sent = await event.respond("📝 YouTube Video Link ပို့ပေးပါ။")
         last_msg_ids[uid] = sent.id
 
     elif "TTS" in text or "Text To Speech" in text:
         await cleanup(event.chat_id, uid)
         user_state[uid] = "waiting_tts"
-        sent = await event.respond("🗣 အသံပြောင်းလိုတဲ့ စာသားကို ပို့ပေးပါ။")
+        sent = await event.respond("🗣 အသံပြောင်းမည့် စာသားကို ပို့ပေးပါ။")
         last_msg_ids[uid] = sent.id
 
     elif "Translation" in text:
         await cleanup(event.chat_id, uid)
         user_state[uid] = "waiting_trans"
-        sent = await event.respond("🔠 ဘာသာပြန်လိုတဲ့ စာသားကို ပို့ပေးပါ။")
+        sent = await event.respond("🔠 ဘာသာပြန်မည့် စာသားကို ပို့ပေးပါ။")
         last_msg_ids[uid] = sent.id
 
-    # --- Input Processing ---
+    # --- Feature Processing ---
     elif uid in user_state:
         state = user_state[uid]
         await cleanup(event.chat_id, uid)
@@ -142,8 +148,8 @@ async def handle_all_input(event):
                 vid_id = text.split("v=")[1].split("&")[0] if "v=" in text else text.split("/")[-1]
                 transcript = YouTubeTranscriptApi.get_transcript(vid_id)
                 full_text = " ".join([i['text'] for i in transcript])
-                await event.respond(f"📝 **Transcript Result:**\n\n{full_text[:3000]}") # စာအရှည်ကြီးမဖြစ်အောင် ဖြတ်ထားသည်
-            except: await event.respond("❌ Transcript မရနိုင်ပါ (စာတန်းမပါတဲ့ ဗီဒီယိုဖြစ်နိုင်ပါတယ်)")
+                await event.respond(f"📝 **Transcript:**\n\n{full_text[:3000]}")
+            except: await event.respond("❌ Transcript မရနိုင်ပါ (စာတန်းမပါတာ ဖြစ်နိုင်ပါတယ်)")
             
         elif state == "waiting_tts":
             path = f"tts_{uid}.mp3"
