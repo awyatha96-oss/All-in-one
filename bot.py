@@ -21,7 +21,7 @@ threading.Thread(target=run_dummy_server, daemon=True).start()
 # --- [2] CONFIGURATION ---
 API_ID = 32153130
 API_HASH = '66168465c6360e3d856a8a53a3d21e84'
-BOT_TOKEN = '8570099841:AAFBp8z--d3hb2V0wWa54Ir2HgXxU-A47yk'
+BOT_TOKEN = '8520209828:AAEzuyzIAXjdL0wBnXsyamjLLzWiUIQp23c'
 
 # Bot နာမည်အသစ်
 BOT_NAME = "OmniVerse Bot"
